@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Starting with Apache Kafka</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <style type="text/css">
+      @font-face{
+        font-family: 'Droid Serif';
+        src: url('slides/fonts/DroidSerif.ttf');
+      }
+      @font-face{
+        font-family: 'Yanone Kaffeesatz';
+        src: url('slides/fonts/YanoneKaffeesatz-Regular.ttf');
+      }
+      @font-face{
+        font-family: 'Ubuntu Mono';
+        src: url('slides/fonts/UbuntuMono-Regular.ttf');
+      }
+
+      body { font-family: 'Droid Serif'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz';
+        font-weight: normal;
+      }
+      ul, ol {
+        margin: 6px 0 6px 0;  
+      }
+      li {
+        margin: 0 0 12px 0;  
+      }
+      img.logo {
+        height: 150px;
+      }
+      img.producer {
+        height: 300px;
+      }
+      img.consumer {
+        height: 230px;
+      }
+      img.broker {
+        height: 300px;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono'; }
+      span.red { color: red; }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+## Starting with Apache Kafka
+
+carlostoro@s4n.co
+
+<image src="slides/img/logo.png" class="logo"/>
+
+???
+- Who am I
+- Who has experience with kafka ?
+- Ask people to hang together with experienced folks
+---
+
+name: agenda
+## Agenda
+
+- Objective of the workshop
+- Environment setup
+- Kafka: the fundamentals
+- Hands-on Part 1: Using the Kafka CLI
+- Exploring the Java API
+- Hands-on Part 2: Using the Java API
+- Avro
+- Hands-on Part 3: Using the Java API with Avro
+- Recap
+
+---
+
+class: center, middle
+## Objective of the workshop 
+
+Level: Basic
+
+Understand the fundamentals of Apache Kafka.
+
+Hands-on experience going further than a Hello World.
+
+---
+
+class: center, middle
+## Environment setup
+
+---
+
+## Prerequisites
+
+- Clone this repo: https://github.com/candtoro/kafka-workshop
+
+- Docker engine
+
+- JDK 1.8
+
+- Experience running bash scripts  `¯\_(ツ)_/¯`
+
+---
+
+## Install
+
+Run spotify/kafka container
+
+```bash
+docker run --name kafka -d -p 2181:2181 -p 9092:9092 --env ADVERTISED_HOST=127.0.0.1 --env ADVERTISED_PORT=9092 --env AUTO_CREATE_TOPICS=false spotify/kafka
+```
+
+Download the dependencies for the Java client with Gradle
+
+```bash
+./gradlew build
+```
+
+---
+
+class: center, middle
+## Kafka: the fundamentals
+
+---
+## What is NOT Apache Kafka
+
+- A traditional message queue. JMS or MQ*
+- Does not support AMQP, MQTT, STOMP
+- A timeseries database
+
+---
+## What is Apache Kafka
+
+- Event log is the core abstraction.
+- Publish/Subscribe messaging system organized by topics.
+- Messages are persisted to the filesystem
+- High throughput, low latency and highly available system.
+
+???
+- A database Write-ahead-log serves replication and recovery purposes.
+- State transition in a process.
+- The filesystem is not slow. Linear writes as an append only operation are insanely more faster than random writes.
+
+---
+
+class: center, middle
+## Kafka terminology
+
+---
+# Decoupling .red[Producers] and .red[Consumers]
+
+<image src="slides/img/Kafka-0.jpg" class=""/>
+- It uses TCP for communication.
+
+---
+# Topics
+
+<image src="slides/img/Kafka-1.jpg" class=""/>
+- .red[Topics] are categories where .red[Records] are published. 
+- A Record it's a .red[Key], .red[Value] pair.
+
+---
+# Partitions
+
+<image src="slides/img/Kafka-2.jpg" class=""/>
+- Topics are broken down in .red[Partitions]
+- A Partition is an ordered and immutable log.
+- Every record in the partition has an asigned sequential id number called .red[offset].
+
+---
+# Producers
+
+<image src="slides/img/Kafka-3.jpg" class="producer"/>
+- A producer publish records to a specific partition
+- The Key and Value are serialized to ByteArrays.
+- Producers write bytes, server does not enforce schema.
+- The .red[partitioner] will choose the partition if it has not been specified in the Record
+- The record is sent to the kakfa broker in batch​es.
+
+???
+Send has 3 different ways to do it.
+
+---
+# Consumers
+
+<image src="slides/img/Kafka-4.jpg" class="consumer"/>
+- A consumer subscribes from one and more topics and reads the records in the order that they were published.
+- Consumers works as part of a .red[consumer group]. This assures each partition is consumed by one member.
+- Different consumer groups can process the topic from the beginning.
+- Consumers track their position in each partition doing commits of the processed offset.
+- Consumers read whenever, server does not enforce delivery
+
+???
+- Kafka does not push
+- Read does not destroy
+- History available. Consumers can catch up
+- Consumers can reconsume from the past
+- Ordering maintain
+- Delivery guarantees. At least once.
+
+---
+# Brokers
+
+<image src="slides/img/Kafka-5.jpg" class="broker"/>
+- A single Kafka server is called a .red[Broker]
+- Kafka brokers operates as a part of a cluster
+- A complete partition lives in just one broker of the cluster. That's the leader.
+- A partition could be replicated in other brokers using .red[replication factor].
+
+???
+- One broker is the controller. Some kind of leader, that helps in the assigning of partitions to brokers.
+- Zookeeper: distributed key value store, consensus protocol. Helps in the election of broker controller.
+- "The broker receives messages from producers, assigns offsets to them, and commits the messages to storage on disk"
+
+---
+
+class: center, middle
+## Hands-on Part 1: Using the Kafka CLI
+
+???
+Walktrough then hands-on of 20 minutes
+
+---
+
+## Quickstart
+
+Get into the kafka container to be able to use the CLI
+```bash
+docker exec -it kafka /bin/bash
+```
+Use as many terminals as you need.
+
+---
+
+## Kafka topics
+
+Create a topic "cli-test" with 4 partitions
+```bash
+$KAFKA_HOME/bin/kafka-topics.sh --create --zookeeper 127.0.0.1:2181 --topic cli-test --partitions 4 --replication-factor 1
+```
+List the available topics
+```bash
+$KAFKA_HOME/bin/kafka-topics.sh --list --zookeeper 127.0.0.1:2181
+```
+Describe a particular topic
+```bash
+$KAFKA_HOME/bin/kafka-topics.sh --describe --zookeeper 127.0.0.1:2181 --topic cli-test
+```
+Command to delete topics
+```bash
+$KAFKA_HOME/bin/kafka-topics.sh --delete --zookeeper 127.0.0.1:2181 --topic cli-test
+```
+
+---
+
+## Consuming messages
+ 
+Consume data from a kafka topic.
+```bash
+$KAFKA_HOME/bin/kafka-console-consumer.sh --bootstrap-server 127.0.0.1:9092 --topic cli-test --consumer-property group.id=group1
+```
+List consumer groups and describe "group1" to watch the partition and offset.
+```bash
+$KAFKA_HOME/bin/kafka-consumer-groups.sh --list --bootstrap-server 127.0.0.1:9092
+$KAFKA_HOME/bin/kafka-consumer-groups.sh --describe --bootstrap-server 127.0.0.1:9092 --group group1
+```
+Consume data specifying the partition and the offset
+```bash
+$KAFKA_HOME/bin/kafka-console-consumer.sh --bootstrap-server 127.0.0.1:9092 --topic cli-test --consumer-property group.id=group1 --partition 0 --offset 1
+```
+
+---
+
+## Producing messages
+
+Use the standard output to publish messages to a Kafka topic
+```bash
+$KAFKA_HOME/bin/kafka-console-producer.sh --broker-list 127.0.0.1:9092 --topic cli-test
+```
+
+You can create a file to publish random data to the topic
+```bash
+seq 1 20 > data.txt
+$KAFKA_HOME/bin/kafka-console-producer.sh --broker-list 127.0.0.1:9092 --topic cli-test < data.txt
+```
+
+---
+
+## Exercise
+
+- Create a kafka topic and publish random messages with .red[`kafka-console-producer.sh`]
+- Consume those messages in two different consumer groups using .red[`kafka-console-consumer`]
+- Incrementaly create more consumers until you have more consumers than partitions.
+- Monitor the offsets of a particular consumer group using .red[`kafka-consumer-groups.sh --describe`].
+
+---
+
+class: center, middle
+## Exploring the Java API
+
+---
+## Dependencies
+
+```groovy
+dependencies {
+    compile 'org.apache.kafka:kafka-clients:0.10.1.0'
+}
+```
+
+---
+## Producer API
+
+- Common configuration for the Producer API
+
+```java
+Properties props = new Properties();
+props.put("bootstrap.servers","localhost:9092");
+props.put("acks", "all");
+props.put("retries", 1);
+props.put("compression.type", "snappy");
+props.put("batch.size	", "16384");
+props.put("key.serializer","org.apache.kafka.common.serialization.StringSerializer");
+props.put("value.serializer","org.apache.kafka.common.serialization.StringSerializer");
+
+```
+- Setting up a producer
+
+```java
+Producer<String,String> producer = new KafkaProducer<>(props);
+ProducerRecord<String,String> record = new ProducerRecord<>(topic, partition, key, value);
+```
+
+---
+## Producer API
+
+- Sending the record: fire and forget
+```java
+producer.send(record);
+```
+
+- Sending the record: synchronous
+```java
+RecordMetadata result = producer.send(record).get();
+result.partition();
+result.offset();
+```
+
+- Sending the record: asynchronous with a callback
+```java
+producer.send(record, new callback());
+```
+
+---
+## Consumer API
+
+- Common configuration for the Consumer API
+
+```java
+Properties props = new Properties();
+props.put("bootstrap.servers", "localhost:9092");
+props.put("group.id", "test");
+props.put("enable.auto.commit", "true");
+props.put("auto.commit.interval.ms", "1000");
+props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+```
+- Setting up a consumer
+
+```java
+KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+consumer.subscribe(Collections.singletonList(topic));
+```
+---
+## Consumer API
+
+- Polling from the partition
+
+```java
+ConsumerRecords<String, String> records = consumer.poll(100);
+
+for (ConsumerRecord<String, String> record : records)
+    record.partition();
+    record.offset();
+    record.key();
+    record.value();
+}
+```
+
+---
+
+class: center, middle
+## Hands-on Part 2: Using the Java API
+
+---
+
+## Quickstart
+
+- Execute `SimpleProducer`
+```bash
+./gradlew producer
+```
+
+- Execute `SimpleConsumer`
+```bash
+./gradlew consumer
+```
+
+---
+
+## Exercise
+
+- Create the kafka topics needed by the Java application using .red[`kafka-topics.sh --create`]
+- Experiment with the `SimpleProducer` and `SimpleConsumer` classes. Execute as many consumers as you want.
+
+---
+
+class: center, middle
+## Avro
+
+---
+
+## Why a data serialization library in Kafka
+- Your language built-in serialization format couples your consumers and producers to that language.
+- JSON and XML could work but but they are too verbose and slow to parse.
+- You want to enforce an schema to ensure the correctness of the data.
+- Protobuf, Thrift and Avro are popular choices
+
+---
+## What is Avro
+- It's a language agnostic data serialization library.
+- Avro uses JSON to declare schemas.
+- It allows the evolution and maintainability of the schema.
+
+```JSON
+{"namespace": "avro",
+  "type": "record",
+  "name": "Customer",
+  "fields": [
+    {"name": "id", "type": "string"},
+    {"name": "name", "type": "string"},
+    {"name": "phone",  "type": ["null","string"], "default": null},
+    {"name": "email",  "type": ["null","string"], "default": null}
+  ]
+}
+```
+
+---
+
+class: center, middle
+## Hands-on Part 3: Using the Java API with Avro
+
+---
+## Dependencies
+
+```groovy
+plugins {
+    id 'com.commercehub.gradle.plugin.avro' version '0.9.0'
+}
+
+dependencies {
+    compile 'org.apache.avro:avro:1.8.1'
+}
+```
+---
+## Quickstart
+
+- Every time you update or create a new Avro schema you should recompile the application, to generate the Java classes.
+```bash
+./gradlew compile
+```
+
+- Execute `AvroProducer`
+```bash
+./gradlew avroProducer
+```
+
+- Execute `AvroConsumer`
+```bash
+./gradlew avroConsumer
+```
+
+---
+
+## Exercise
+
+- Create a new Avro Schema that represents a "PageVisit" with the fields: required url, required ip, required timestamp, optional sessionId
+- Create a new Producer that generates random events with PageVisit records. The PageVisit with the same IP should be published to the same topic and partition. The sessionId should be null.
+- Create a new Main that will try to decide if some PageVisit belongs to the same sessionId.
+  * You need to create a Consumer that groups all the events based on the IP. 
+  * You will generate or reutilize a sessionId for the events that have the same IP.
+  * You need to create a Producer to publish the PageVisit with the sessionId to a different topic.
+
+---
+
+class: center, middle
+## Recap
+
+---
+
+## Recap
+
+- Apache Kafka fundamental concepts
+        * Broker
+        * Topic
+        * Partition
+        * Record
+        * Producer
+        * Consumer
+- We have used the Kafka CLI and the Java API
+- We reviewed Avro for data serialization
+
+---
+
+## Use cases
+
+- As the single enterprise event backbone to connect applications, microservices and business processes
+- As a commit log for replicating data in distributed systems.
+- As the backbone of fast data architectures
+        * Ingestion of huge amounts of data
+        * Low latency stream processing with Kafka Streams
+- As the backbone for modern ETL architectures with Kafka connect
+
+???
+Those diverse use cases imply diverse requirements, configuration and proper use of the tool.
+Do we need ordering ? Latency vs throughput
+This will influence the way you produce messages and also how you consume those messages.
+
+---
+
+## Where to go from here ?
+
+- [Official documentation](http://kafka.apache.org/documentation.html)
+- [Confluent platform](http://docs.confluent.io)
+- [Kafka the Definitive Guide](http://shop.oreilly.com/product/0636920044123.do)
+- [What everybody should know about logs](https://engineering.linkedin.com/distributed-systems/log-what-every-software-engineer-should-know-about-real-time-datas-unifying)
+- [Making sense of stream processing](https://www.confluent.io/blog/making-sense-of-stream-processing/)
+- [Stream processing - Part 1](https://www.confluent.io/blog/stream-data-platform-1/)
+- [Stream processing - Part 2](https://www.confluent.io/blog/stream-data-platform-2/)
+- [Event Sourcing, CQRS, stream processing and Kafka](https://www.confluent.io/blog/event-sourcing-cqrs-stream-processing-apache-kafka-whats-connection/)
+
+---
+
+class: center, middle
+## Thanks
+
+
+    </textarea>
+    <script src="slides/lib/remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create({
+          ratio: '4:3'
+      });
+    </script>
+  </body>
+</html>
